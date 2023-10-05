@@ -39,7 +39,7 @@ compute_delta_H <- function(N, mat, angles.samples, T, H){
 
 
 get_specific_heat <- function(all_H, T){
-    actual.vals <- as.integer(length(all_H)/100)
+    actual.vals <- as.integer(length(all_H)/10)
     len <- length(all_H)
     return(var(all_H[(len-actual.vals):len])/T^2)
 }
@@ -85,16 +85,16 @@ create_WS_network <- function(dim, size, nei, p) {
     return(adjacency_list)
 }
 
-NN <- c(100)  #c(100, 200, 400, 800)
-Temperature <- seq(2, 2.4, 0.05)
+NN <- c(400)  #c(100, 200, 400, 800)
+Temperature <- seq(2, 2.4, 0.025)
 # probs <- seq(0, 1, 0.1)
 p <- 0.2
 runs <- 1:1000
 iter_per_step <- 1:1000
-network_realization <- 100
+network_realization <- 150
 
 for (N in NN){
-    heats <- c(); U.N.T <- c()
+    heats <- c(); U.N.T <- c(); magn_N <- c()
     for (n in 1:network_realization){
         m <- c(); m.2 <- c(); m.4 <- c()
         specific_heat <- c()
@@ -136,19 +136,24 @@ for (N in NN){
         }
         U.N.T <- append(U.N.T, 1 - m.4/(3*(m.2^2)))
         heats <- append(heats, specific_heat)
+        magn_N <- append(magn_N, m)
     }
     cat("Saving results for N =", N, "\n")
     res_U <- rep(0, length(Temperature))
     res_c <- rep(0, length(Temperature))
+    res_m <- rep(0, length(Temperature))
     for (i in 1:length(Temperature)){
         res_U[i] <- mean(U.N.T[seq(i, length(U.N.T), length(Temperature))])
         res_c[i] <- mean(heats[seq(i, length(heats), length(Temperature))])
+        res_m[i] <- mean(magn_N[seq(i, length(magn_N), length(Temperature))])
     }
+    # res_m <- res_m*(N^(1/4))
     folder <- 'res/'
     file_path_U <- paste(folder, 'U_', N, '.txt', sep='')
     file_path_c <- paste(folder, 'c_', N, '.txt', sep='')
-    file_path_U
+    file_path_mN <- paste(folder, 'mN_', N, '.txt', sep='')
     write.table(res_U, file = file_path_U, col.names = FALSE, row.names = FALSE)
     write.table(res_c, file = file_path_c, col.names = FALSE, row.names = FALSE)
+    write.table(res_m, file = file_path_mN, col.names = FALSE, row.names = FALSE)
 }
 cat("Done!\n")
