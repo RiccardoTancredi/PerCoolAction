@@ -38,10 +38,10 @@ compute_delta_H <- function(N, mat, angles.samples, T, H){
 }
 
 
-get_specific_heat <- function(all_H, T){
-    actual.vals <- as.integer(length(all_H)/10)
-    len <- length(all_H)
-    return(var(all_H[(len-actual.vals):len])/T^2)
+get_specific_heat <- function(all_H, T, nei, N){
+    K <- 1/T
+    mu <- mean(all_H*2/(N*nei))
+    return(K^2 * (1-mu/K - mu^2))
 }
 
 # Step 1: Generate a Regular Lattice
@@ -85,75 +85,81 @@ create_WS_network <- function(dim, size, nei, p) {
     return(adjacency_list)
 }
 
-NN <- c(400)  #c(100, 200, 400, 800)
-Temperature <- seq(2, 2.4, 0.025)
+NN <- c(100)  #c(100, 200, 400, 800)
+Temperature <- seq(2, 2.4, 0.05)
 # probs <- seq(0, 1, 0.1)
 p <- 0.2
 runs <- 1:1000
-iter_per_step <- 1:1000
-network_realization <- 150
+iter_per_step <- 1:500
+network_realization <- 50
 
 for (N in NN){
-    heats <- c(); U.N.T <- c(); magn_N <- c()
+    magn_N_2 <- c(); magn_N_4 <- c(); magn_N <- c(); heats <- c()
     for (n in 1:network_realization){
         m <- c(); m.2 <- c(); m.4 <- c()
-        specific_heat <- c()
+    specific_heat <- c()
 
-        mat <- create_WS_network(dim = dim, size = N, nei = nei, p = p)
-        angles.samples <- runif(n = N, min = -pi, max = pi) 
+    mat <- create_WS_network(dim = dim, size = N, nei = nei, p = p)
+    angles.samples <- runif(n = N, min = -pi, max = pi) 
 
-        result <- H_matrix_calc(N = N, mat = mat, angles.samples = angles.samples)
-        H_matrix <- result$H; co <- result$co; si <- result$si
-        H <- sum(H_matrix)/2     
-        
-        for (T in Temperature){
-            magn <- c(); all_H <- c(); m_squared <- c(); m_fourth <- c()
-            for (run in runs){
-                for (iter in iter_per_step){
-                    res <- compute_delta_H(N, mat, angles.samples, T, H)
-                    angles.samples <- res$angles.samples; H <- res$H
-                }
-                co <- mean(cos(angles.samples))
-                si <- mean(sin(angles.samples))
-                all_H <- append(all_H, H)
-                
-                # Compute magnetization and higer orders of m
-                m_temp <- c(co, si)
-                m_2 <- sum(m_temp^2)
-                m_4 <- m_2^2
-
-                # Save results for each run
-                magn <- append(magn, norm(m_temp, type="2"))
-                m_squared <- append(m_squared, m_2)
-                m_fourth <- append(m_fourth, m_4) 
+    result <- H_matrix_calc(N = N, mat = mat, angles.samples = angles.samples)
+    H_matrix <- result$H; co <- result$co; si <- result$si
+    H <- sum(H_matrix)/2     
+    
+    for (T in Temperature){
+        magn <- c(); all_H <- c(); m_squared <- c(); m_fourth <- c()
+        for (run in runs){
+            for (iter in iter_per_step){
+                res <- compute_delta_H(N, mat, angles.samples, T, H)
+                angles.samples <- res$angles.samples; H <- res$H
             }
+            co <- mean(cos(angles.samples))
+            si <- mean(sin(angles.samples))
+            all_H <- append(all_H, H)
+            
+            # Compute magnetization and higer orders of m
+            m_temp <- c(co, si)
+            m_2 <- sum(m_temp^2)
+            m_4 <- m_2^2
 
-            specific_heat <- append(specific_heat, get_specific_heat(all_H, T))
-            # Take the average for each run, so to have only one value per temperature
-            m <- append(m, mean(magn))
-            m.2 <- append(m.2, mean(m_squared))
-            m.4 <- append(m.4, mean(m_fourth))
+            # Save results for each run
+            magn <- append(magn, norm(m_temp, type="2"))
+            m_squared <- append(m_squared, m_2)
+            m_fourth <- append(m_fourth, m_4) 
         }
-        U.N.T <- append(U.N.T, 1 - m.4/(3*(m.2^2)))
-        heats <- append(heats, specific_heat)
-        magn_N <- append(magn_N, m)
+
+        specific_heat <- append(specific_heat, get_specific_heat(all_H, T, nei, N))
+        # Take the average for each run, so to have only one value per temperature
+        m <- append(m, mean(magn))
+        m.2 <- append(m.2, mean(m_squared))
+        m.4 <- append(m.4, mean(m_fourth))
     }
+    magn_N <- append(magn_N, m)
+    magn_N_2 <- append(magn_N_2, m.2)
+    magn_N_4 <- append(magn_N_4, m.4)
+    heats <- append(heats, specific_heat)
+}
     cat("Saving results for N =", N, "\n")
-    res_U <- rep(0, length(Temperature))
-    res_c <- rep(0, length(Temperature))
+    res_m_2 <- rep(0, length(Temperature))
+    res_m_4 <- rep(0, length(Temperature))
     res_m <- rep(0, length(Temperature))
+    res_c <- rep(0, length(Temperature))
     for (i in 1:length(Temperature)){
-        res_U[i] <- mean(U.N.T[seq(i, length(U.N.T), length(Temperature))])
-        res_c[i] <- mean(heats[seq(i, length(heats), length(Temperature))])
+        res_m_2[i] <- mean(magn_N_2[seq(i, length(magn_N_2), length(Temperature))])
+        res_m_4[i] <- mean(magn_N_4[seq(i, length(magn_N_4), length(Temperature))])
         res_m[i] <- mean(magn_N[seq(i, length(magn_N), length(Temperature))])
+        res_c[i] <- mean(heats[seq(i, length(heats), length(Temperature))])
     }
+    U.N.T <- 1 - res_m_4/(3*res_m_2^2)
     # res_m <- res_m*(N^(1/4))
     folder <- 'res/'
     file_path_U <- paste(folder, 'U_', N, '.txt', sep='')
     file_path_c <- paste(folder, 'c_', N, '.txt', sep='')
     file_path_mN <- paste(folder, 'mN_', N, '.txt', sep='')
-    write.table(res_U, file = file_path_U, col.names = FALSE, row.names = FALSE)
+    write.table(U.N.T, file = file_path_U, col.names = FALSE, row.names = FALSE)
     write.table(res_c, file = file_path_c, col.names = FALSE, row.names = FALSE)
     write.table(res_m, file = file_path_mN, col.names = FALSE, row.names = FALSE)
 }
+header = paste('#  netw iters =', network_realization,' p =',p, 'newCv_newU', "Delta_T =", diff(Temperature)[1])
+writeLines(header, 'res/metadata.txt')
 cat("Done!\n")
