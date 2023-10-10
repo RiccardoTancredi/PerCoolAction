@@ -1,4 +1,10 @@
 library("igraph") |> suppressPackageStartupMessages()
+source("const.R")
+
+# Set up your bot
+bot_token <- API
+bot_chat_id <- Ric_id # Riccardo
+bot_chat_id_2 <- Anto_id # Antonio
 
 dim <- 1 # 1D
 nei <- 3
@@ -85,13 +91,13 @@ create_WS_network <- function(dim, size, nei, p) {
     return(adjacency_list)
 }
 
-NN <- c(100)  #c(100, 200, 400, 800)
+NN <- c(1600)#, 200, 400)
 Temperature <- seq(2, 2.4, 0.05)
 # probs <- seq(0, 1, 0.1)
 p <- 0.2
 runs <- 1:1000
-iter_per_step <- 1:500
-network_realization <- 50
+iter_per_step <- 1:5000
+network_realization <- 100
 
 for (N in NN){
     magn_N_2 <- c(); magn_N_4 <- c(); magn_N <- c(); heats <- c()
@@ -163,3 +169,21 @@ for (N in NN){
 header = paste('#  netw iters =', network_realization,' p =',p, 'newCv_newU', "Delta_T =", diff(Temperature)[1])
 writeLines(header, 'res/metadata.txt')
 cat("Done!\n")
+
+# Send a message to the bot
+message <- "Your R script has finished executing."
+command <- sprintf('curl -X POST "https://api.telegram.org/bot%s/sendMessage" -d "chat_id=%s&text=%s"', bot_token, bot_chat_id, message)
+
+# system(command)
+
+folder_path <- "res/"  # Replace with the actual path to your folder
+# Get a list of all files in the folder
+files <- list.files(path = folder_path, full.names = TRUE)
+# Iterate through the files and send them
+for (file in files) {
+    command <- sprintf('curl -F chat_id=%s -F document=@%s "https://api.telegram.org/bot%s/sendDocument"', bot_chat_id, file, bot_token)
+    system(command)
+    command <- sprintf('curl -F chat_id=%s -F document=@%s "https://api.telegram.org/bot%s/sendDocument"', bot_chat_id_2, file, bot_token)
+    system(command)
+    print("File sent.")
+}
