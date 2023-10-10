@@ -1,0 +1,220 @@
+# Potts Model on a free-scale network
+
+The aim of this task is to perform a simulation of the Potts model on a complex network, to examine its critical behavior, specifically how the order parameter varies in response to changes in the control parameter.
+
+### Libraries
+
+```{r}
+library(igraph) |> suppressPackageStartupMessages()
+library(ggplot2) |> suppressPackageStartupMessages()
+library(RColorBrewer) |> suppressPackageStartupMessages()
+library(rgl)|> suppressPackageStartupMessages()
+```
+
+### Generation of the free-scale network
+
+##### WARNING:
+
+1)  Often p indicates the number available states but in this simulation the number of states is: p+1.
+
+2)  This code can endle at most six Potts states. To add more than 6 states the code must be modified.
+
+```{r}
+N <- 100 # number of nodes 
+gamma <- 3.5 # exponent 
+p <- 2 # nuber of states - 1 
+
+# Power-law degree distribution
+degs <- sample(2:100, N, replace=TRUE, prob=(2:100)^-gamma)
+# correct the degree sequence if its sum is odd
+if (sum(degs) %% 2 != 0) { degs[1] <- degs[1] + 1 }
+random_states <- sample((0:p), N, replace = TRUE) 
+# Creation of the graph 
+h <- sample_degseq(degs, method="simple.no.multiple") %>%  
+  set_vertex_attr("state", value = random_states)   # normal conf. model
+```
+
+### Plot of the graph
+
+```{r}
+plot(h, 
+     vertex.label=NA, 
+     vertex.color="green",
+     vertex.size=2,
+     edge.color="red",
+     edge.width=1)
+```
+
+### Definition of some functions:
+
+##### delta(): is a simple delta function
+
+##### ene_iniz(): is function that computes the initial energy of the system
+
+```{r}
+#
+delta <- function(a, b) {
+  ifelse(a == b, return (1), return (0))
+}
+#
+ene_iniz <- function(h) {
+  energy <- 0
+  for(i in seq(1: vcount(h))) {
+    nn <- neighbors(h, i, mode = c( "all"))
+    stateNode <- V(h)$state[i]
+    for(k in seq(1:length(nn))) {
+    energy<- energy - delta(stateNode, V(h)$state[nn[k]])
+    }
+  }
+  return(energy)
+}
+```
+
+### Simulated annealing:
+
+```{r}
+
+#MAIN
+
+temperature <- 3
+cicli <- 200 
+energy <- ene_iniz(h)
+# initialization 
+n0 <- 0
+n1 <- 0
+n2 <- 0
+n3 <- 0
+n4 <- 0
+n5 <- 0
+counter <- 0
+counter2 <- 0
+magnetization <- 0
+stimE <- 0
+stimE2 <- 0
+temp <- c()
+magn <- c()
+#
+repeat{
+  counter <- counter + 1
+  for (passi in 1:cicli) {
+    e1 <- 0
+    e2 <- 0
+    de <- 0
+    # select a random node 
+    random <- sample(1:vcount(h), 1)
+    stateNode1 <- V(h)$state[random]
+    nn <- neighbors(h, random, mode = c( "total"))
+    # compute the energy of the node before the flip
+    for(node in 1:length(nn)) {
+      e1 <- e1 - delta(stateNode1, V(h)$state[nn[node]])
+    }
+    # flip
+    randomState <- sample(0:p, 1)
+    # the node must change state 
+    while (randomState == stateNode1) {
+        randomState <- sample(0:p, 1)
+    }
+    V(h)$state[random] <- randomState
+    stateNode2 <- V(h)$state[random]
+    # compute the energy of the node after the flip
+    for(node in 1:length(nn)) {
+      e2 <- e2 - delta(stateNode2, V(h)$state[nn[node]])
+    }
+    # evaluate the delta energy
+    de <- e2 - e1
+    energy <- energy + de
+    # Metropolis step condition 
+    if ((de) >= 0) 
+    {
+    stochastic <- runif(1)
+    if (exp(-(de) / temperature) < stochastic) 
+      {
+        # if the step is not accepted, restore the previous situation 
+        V(h)$state[random] <- stateNode1
+        energy <- energy - de
+      }
+    }
+  } # end of the cicle from 1 to cicli 
+  temperature <- temperature - 0.05
+  cat ("Temperatura", temperature, "Energia:", energy, "\n")
+  # more steps at the temperature of interest 
+  if((counter %% 10 == 1)) 
+  {
+    cat("****BREAK****", "\n")
+    # termalization of the system 
+    for(steps in 1:(10^4)) 
+    {
+      # repetition of the Metropolis step 
+      e1 <- 0
+      e2 <- 0
+      de <- 0
+      random <- sample(1:vcount(h), 1)
+      stateNode1 <- V(h)$state[random]
+      nn <- neighbors(h, random, mode = c( "total"))
+      for(node in 1:length(nn)) {
+        e1 <- e1 - delta(stateNode1, V(h)$state[nn[node]])
+      }
+      # flip
+      randomState <- sample(0:p, 1)
+      while (randomState == stateNode1) {
+        randomState <- sample(0:p, 1)
+      }
+      V(h)$state[random] <- randomState
+      stateNode2 <- V(h)$state[random]
+      for(node in 1:length(nn)) {
+        e2 <- e2 - delta(stateNode2, V(h)$state[nn[node]])
+      }
+      de <- e2 - e1
+      energy <- energy + de
+      # Metropolis step condition 
+      if ((de) >= 0) 
+      {
+        stochastic <- runif(1)
+        if (exp(-(de) / temperature) < stochastic) 
+        {
+         V(h)$state[random] <- stateNode1
+         energy <- energy - de
+        }
+      }
+      # computation of the magnetization 
+      if (steps %% 1000 == 1) {
+      # counting the state 
+      mask_vector0 <- V(h)$state == 0
+      mask_vector1 <- V(h)$state == 1
+      mask_vector2 <- V(h)$state == 2
+      mask_vector3 <- V(h)$state == 3
+      mask_vector4 <- V(h)$state == 4
+      mask_vector5 <- V(h)$state == 5
+      #
+      n0 <- sum(mask_vector0)
+      n1 <- sum(mask_vector1)
+      n2 <- sum(mask_vector2)
+      n3 <- sum(mask_vector3)
+      n4 <- sum(mask_vector4)
+      n5 <- sum(mask_vector5)
+      #
+      maxn <- max(n0, n1, n2, n3, n4, n5)
+      magnetization <- magnetization + (((p+1) / (vcount(h)) * maxn - 1)/(p))
+      counter2 <- counter2 + 1
+      #
+      n0 <- 0
+      n1 <- 0
+      n2 <- 0
+      n3 <- 0
+      n4 <- 0
+      n5 <- 0
+    }  
+  } # end of the loop over the iteration at the interested temperature 
+  # save the temp & magnetization
+  temp <- append(temp, temperature)
+  magn <- append(magn, magnetization/counter2)
+  # feedback for the user
+  cat("Magnetization", magnetization/counter2) 
+  magnetization <- 0
+  counter2 <- 0
+  stimE <- 0
+  stimE2 <- 0
+  }
+if(temperature < 0.1) {break}
+}
+```

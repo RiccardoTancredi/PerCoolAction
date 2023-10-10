@@ -1,0 +1,157 @@
+## Song-Havlin-Makse self-similar model
+
+The aim of this task is to implement the growth mechanism behind the fractal, or self - similar, networks and to study its fractal properties.
+
+### Generation of the network
+
+In order to practically implement the model introduced before, we follow this algorithm based on two growth processes called Mode I and Mode II (see theory). The growth algorithm swtich from Mode I and Mode II according to probability e. In the following we show this method lead us to a small - world fractal network.
+
+##### Mode I with prob = e.
+
+##### Mode II with prob = 1 - e.
+
+```{r}
+library(igraph) |> suppressPackageStartupMessages()
+library(ggplot2) |> suppressPackageStartupMessages()
+#
+# Main to generate a network with a multiplicative process and preferential attachment
+#
+# Model I
+N_it <- 2  # Number of iterations
+m <- 2     # Multiplicative factor 
+e <- 0.8   # probability 
+nn_list <- list() 
+# Initialization of the starting graph as a star 
+g <- make_graph(~ 1--2, 1--3, 1--4, 1--5)
+diameter <- list()
+numberNodes <- list()
+#
+# loop over the number of iterations 
+for(t in 1:N_it) { 
+  V(g)$old <- TRUE
+  V(g)$busy <- TRUE
+  V(g)$done <- FALSE
+  degree_sequence <- degree(g)
+  for( s in (1:vcount(g) ) ) {
+  nn_list[[length(nn_list) + 1]] <- as_ids(neighbors(g, s, mode = c( "all")))
+  }
+  # MODE I
+  for (node in 1:vcount(g)) {
+    vcount(g)
+    node_degree <- degree(g, v = node)
+    mk = m*node_degree
+    for( j in seq(1:mk)){
+      g <- add.vertices(g, nv = 1, old = FALSE, done = TRUE, busy = FALSE, name = vcount(g) + 1)
+      new_node <- vcount(g)
+      # connection with child nodes 
+      g <- add_edges(g, edges = c(node, new_node ))
+    }
+  }
+  # loop over all the nodes
+  for(v1 in 1:vcount(g)) { 
+    # CHECK -- If the node already exists in the previous iteration
+    if(V(g)$old[v1] == TRUE) { 
+      # loop over its old neighbors
+      for(old_nei in nn_list[[v1]]) { 
+        # CHECK -- If the old node's neighbors have not already been considered
+        if (V(g)$done[as.integer(old_nei)] == FALSE) { 
+          # introduction of stochasticity
+          random <- runif(1)
+          if (random > e) {
+            # MODE II 
+            del_edge <- get.edge.ids(g, c(as.integer(v1), as.integer(old_nei)))
+            g <- delete_edges(g, as.integer(del_edge))
+            # connection between child nodes 
+            nn_v1 <- as_ids(neighbors(g, v1, mode = c( "all")))
+            nn_old_nei <- as_ids(neighbors(g, old_nei, mode = c( "all")))
+            random_son_v1 <- sample(1:length(nn_v1), 1)
+            random_son_old_nei <- sample(1:length(nn_old_nei), 1)
+            # a node cannot be chosen 2 times 
+            while(V(g)$busy[as.integer(nn_v1[random_son_v1])] == TRUE) {
+                random_son_v1 <- sample(1:length(nn_v1), 1)
+            }
+            while(V(g)$busy[as.integer(nn_old_nei[random_son_old_nei])] == TRUE) {
+                random_son_old_nei <- sample(1:length(nn_old_nei), 1)
+            }
+            # adding the connection between child nodes 
+            g <- add_edges(g, edges = c(nn_v1[random_son_v1], nn_old_nei[random_son_old_nei]))
+            # set the busy = TRUE to avoid multiple connections 
+            V(g)$busy[as.integer(nn_v1[random_son_v1])] <- TRUE
+            V(g)$busy[as.integer(nn_old_nei[random_son_old_nei])] <- TRUE
+          }
+        }
+      }
+      V(g)$done[v1] <- TRUE
+    } 
+  }
+  nn_list <- NULL
+  # Saving some useful qualities 
+  diameter <- append(diameter, length(get_diameter(g)))
+  numberNodes <- append(numberNodes, vcount(g))
+}
+```
+
+#### Plot of the produced network.
+
+```{r}
+plot(g, 
+     vertex.label=NA, 
+     vertex.color="green",
+     vertex.size=2,
+     edge.color="red",
+     edge.width=1)
+```
+
+## Box-covering algorithm
+
+Covering a network with the minimum possible number of boxes can reveal precious features of the network's structure. In our case, we seek to identify clues regarding self-similar or fractal features. This task can be accomplished using a box-covering algorithm. The ultimate aim of all box-covering algorithms is to identify the optimal solution, i.e., to find the minimum numeber of boxes for any given box size. A possible way consists of mapping the problem into the well-known greedy color algorithm, a widely adopted technique to obtain an approximate solution.
+
+### Dual graph and greedy-color algorithm:
+
+Eventually, we ended up in a configuration where the coloring in graph h produces a natural box covering in the original network g, in the sense that vertices of the same color will necessarily form a box since the distance between them must be less than lb. In the very end, the minimum number of boxes is equal to the minimum required number of colors in the dual network h.
+
+```{r}
+# Dual graph 
+lb_max <- 5 # maximum value of the box radius 
+N_box <- c() 
+for (lb in 1:lb_max){
+  # initializtion of the dual graph 
+  h <- delete_edges(g, E(g))
+  for (v1 in (1:vcount(h))){
+    nn <- neighbors(graph = h, v = v1)
+    for (v2 in (1:vcount(h))){
+      shortest_path <- shortest_paths(g, from = v1, to = v2)$vpath[[1]]
+      dist_ij <- length(shortest_path)
+      # CHECK - if the distanze between nodes is smaller than the size of the box
+      if((dist_ij > lb) && !(v2 %in% nn )) {
+        h <- add_edges(h, edges = c(v1, v2))
+      }
+    }
+  }
+  # Box covering: greedy-color 
+  # set a NULL(-1) color for each node 
+  color <- rep(-1, vcount(h)) # list containing the color of each node 
+  B <- lapply(1:vcount(h), function(i) neighborhood(h, order = 1, nodes = i))
+  color[1] <- 0 
+  palette <- 0:(vcount(h)-1) # list of all available colors
+  #
+  for (v in V(g)){
+    v <- as.numeric(v)
+    # the first node has to be skipped 
+    if (v == 1){
+      next
+    }
+    else{
+      # Assign the smallest available color that has not yet been picked by its neighbors. 
+      neig <- B[[v]][[1]][-1]
+      col_neig <- color[neig] 
+      minimum <- min(palette[!(palette %in% col_neig)])  
+      color[v] <- minimum
+    }
+  }
+  # 
+  N_box <- append(N_box, max(color) + 1)
+}
+```
+
+The number of boxes needed to cover the network is extracted as the maximum value in the color list (list containing the color of each node) plus 1, since the color starts from 0 and not 1.
